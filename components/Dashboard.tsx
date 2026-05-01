@@ -56,10 +56,15 @@ function SectionTitle({ id, title, subtitle }: { id: string; title: string; subt
 }
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  // Drop the value font from text-2xl to text-xl on narrow screens so wide
+  // numbers like "$493,700,000" never overflow the card on phone widths.
+  // min-w-0 + break-words on the wrapper lets flex/grid parents actually
+  // shrink the column, otherwise the number forces the card wider than
+  // the viewport.
   return (
-    <div>
+    <div className="min-w-0">
       <p className="text-xs text-text-secondary uppercase tracking-wider">{label}</p>
-      <p className="text-2xl font-bold text-text mt-1">{value}</p>
+      <p className="text-xl sm:text-2xl font-bold text-text mt-1 break-words leading-tight">{value}</p>
       {sub && <p className="text-xs text-text-secondary mt-0.5">{sub}</p>}
     </div>
   );
@@ -582,11 +587,20 @@ export function Dashboard({ data }: { data: PipelineData }) {
           {/* Percentile table */}
           <Card className="mt-6">
             <h3 className="text-sm font-medium text-text-secondary mb-4">Claim Percentiles</h3>
-            <div className="grid grid-cols-7 gap-2">
+            {/*
+              Mobile: 1 column with label/value on the same row, left/right
+              aligned. This gives each percentile a full-width band so the
+              dollar values can never collide, and reads cleanly on a phone.
+              Tablet: 4 columns. Desktop: 7-across, traditional table look.
+            */}
+            <div className="grid grid-cols-1 sm:grid-cols-4 md:grid-cols-7 gap-2 sm:gap-3">
               {Object.entries(monte_carlo.percentiles).map(([key, val]) => (
-                <div key={key} className="text-center">
+                <div
+                  key={key}
+                  className="flex items-baseline justify-between sm:block sm:text-center min-w-0 px-3 py-2 sm:p-0 rounded-lg sm:rounded-none bg-surface-elevated/40 sm:bg-transparent"
+                >
                   <p className="text-xs text-text-secondary uppercase">{key}</p>
-                  <p className="text-sm font-semibold text-text mt-1">{usd(val)}</p>
+                  <p className="text-sm font-semibold text-text sm:mt-1 whitespace-nowrap tabular-nums">{usd(val)}</p>
                 </div>
               ))}
             </div>
