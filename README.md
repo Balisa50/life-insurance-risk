@@ -1,12 +1,12 @@
 # Life Insurance Risk Model
 
-Actuarial risk modelling for Sub-Saharan Africa. Built as part of learning actuarial science — wanted to implement proper mortality models from scratch rather than use a black-box package.
+Actuarial risk modelling for Sub-Saharan Africa. Built as part of learning actuarial science - wanted to implement proper mortality models from scratch rather than use a black-box package.
 
 ## Models
 
 **Mortality**: Gompertz-Makeham. Fits the exponential mortality increase with age plus a constant background hazard rate. Parameters estimated on 5,000 synthetic Sub-Saharan Africa profiles calibrated to regional age distributions.
 
-**Survival analysis**: Kaplan-Meier curves with log-rank tests across risk groups. Cox Proportional Hazards for covariate effects — C-index of 0.77 on holdout.
+**Survival analysis**: Kaplan-Meier curves with log-rank tests across risk groups. Cox Proportional Hazards for covariate effects - C-index of 0.77 on holdout.
 
 **Premium pricing**: Actuarial present value framework. Premiums back-calculated from mortality tables with loading factors.
 
@@ -14,8 +14,8 @@ Actuarial risk modelling for Sub-Saharan Africa. Built as part of learning actua
 
 ## Stack
 
-- Python — lifelines, NumPy, pandas, scipy
-- Next.js + Recharts — interactive dashboard
+- Python - lifelines, NumPy, pandas, scipy
+- Next.js + Recharts - interactive dashboard
 
 ## Running
 
