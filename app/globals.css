@@ -21,3 +21,22 @@ body {
   background: #333;
   border-radius: 3px;
 }
+
+/* ---------- scrollbars ---------- */
+
+/* Not drawn anywhere. Scrolling itself is untouched: wheel, trackpad,
+   keyboard and touch all behave as before, only the bar is hidden. */
+html {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+*,
+*::before,
+*::after {
+  scrollbar-width: none;
+}
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
