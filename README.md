@@ -41,7 +41,47 @@ npm install
 npm run dev
 ```
 
-The pipeline is seeded with `default_rng(42)` and reproduces exactly.
+The synthetic run is seeded with `default_rng(42)` and reproduces exactly.
+
+## Running on a real book
+
+`--data` swaps the generated policyholders for a CSV:
+
+```bash
+python pipeline/run_pipeline.py --data pipeline/example_book.csv
+```
+
+The file needs the columns below. Case and surrounding space in the headers are
+ignored, and `policy_id` is optional: rows are numbered if it is absent. Policy
+numbers can be alphanumeric.
+
+| Column | Accepts |
+| --- | --- |
+| `age` | whole number, 0 to 100 |
+| `gender` | `M`, `F`, `Male`, `Female`, any case |
+| `smoker` | `1`/`0`, `Y`/`N`, `Yes`/`No`, `true`/`false` |
+| `bmi` | number, 10 to 80 |
+| `health_score` | whole number 1 to 5, where 3 is the neutral middle |
+| `sum_assured` | number above 0 |
+| `term_years` | whole number, at least 1 |
+
+`pipeline/example_book.csv` is a working 500-policy file. Bad input is rejected
+before any modelling runs, with every problem listed at once and the CSV row
+number against each one. Put real extracts in `pipeline/data/`, which is
+gitignored so nothing confidential is committed by accident.
+
+**What loading a book does and does not give you.** Only the policyholders come
+from the file. The deaths in stage 3 are still simulated from the life table, so
+you get real exposure, real sums assured and real pricing, and you do not get
+real mortality experience. Fitting to actual experience would mean reading real
+duration and event columns rather than simulating them, which this pipeline does
+not do yet.
+
+Small books are handled out loud rather than silently. Below roughly ten deaths
+per covariate the Cox fit is flagged as unreliable, and below six deaths no
+coefficients are reported at all. A handful of deaths otherwise yields a
+concordance of 1.0 through complete separation, which looks like a perfect model
+and is not one.
 
 ## Live
 

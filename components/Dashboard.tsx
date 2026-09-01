@@ -123,7 +123,11 @@ export function Dashboard({ data }: { data: PipelineData }) {
           <SectionTitle
             id="overview"
             title="Portfolio Overview"
-            subtitle={`${demo.total_policies.toLocaleString()} synthetic policyholders, calibrated to Sub-Saharan African mortality`}
+            subtitle={
+              !demo.data_source || demo.data_source === "synthetic"
+                ? `${demo.total_policies.toLocaleString()} synthetic policyholders, calibrated to Sub-Saharan African mortality`
+                : `${demo.total_policies.toLocaleString()} policyholders loaded from ${demo.data_source}`
+            }
           />
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
             <Card><Stat label="Policies" value={demo.total_policies.toLocaleString()} /></Card>
@@ -360,15 +364,27 @@ export function Dashboard({ data }: { data: PipelineData }) {
             id="cox"
             title="Cox Proportional Hazards"
             subtitle={[
-              `Concordance ${cox_ph.concordance} held out, ${cox_ph.concordance_in_sample} in sample`,
+              cox_ph.concordance === null
+                ? cox_ph.concordance_in_sample === null
+                  ? `Not fitted, ${cox_ph.n_events} death(s)`
+                  : `Concordance ${cox_ph.concordance_in_sample} in sample, none held out`
+                : `Concordance ${cox_ph.concordance} held out, ${cox_ph.concordance_in_sample} in sample`,
               cox_ph.ph_violations === null
                 ? null
                 : `Proportional hazards: ${cox_ph.ph_violations} of ${cox_ph.coefficients.length} covariates breach at p < 0.05`,
-              `Log-likelihood ratio: ${cox_ph.log_likelihood}`,
+              cox_ph.log_likelihood === null
+                ? null
+                : `Log-likelihood ratio: ${cox_ph.log_likelihood}`,
             ]
               .filter(Boolean)
               .join(" | ")}
           />
+
+          {cox_ph.warning && (
+            <p className="mb-6 border-l-2 border-warning pl-4 text-sm text-text-secondary">
+              {cox_ph.warning}
+            </p>
+          )}
 
           <Card>
             <div className="overflow-x-auto">
@@ -384,6 +400,13 @@ export function Dashboard({ data }: { data: PipelineData }) {
                   </tr>
                 </thead>
                 <tbody>
+                  {cox_ph.coefficients.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="py-6 px-3 text-center text-text-secondary">
+                        No coefficients. The book carried too few deaths to fit the model.
+                      </td>
+                    </tr>
+                  )}
                   {cox_ph.coefficients.map((c: CoxCoefficient) => (
                     <tr key={c.covariate} className="border-b border-border/50 hover:bg-surface-hover transition-colors">
                       <td className="py-3 px-3 font-mono text-accent">{c.covariate}</td>

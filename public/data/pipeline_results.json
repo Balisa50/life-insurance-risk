@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-01T04:25:05.676371",
+  "generated_at": "2026-09-01T09:47:52.335468",
   "life_table": {
     "chart": [
       {
@@ -983,6 +983,7 @@
     ]
   },
   "demographics": {
+    "data_source": "synthetic",
     "total_policies": 10000,
     "avg_age": 41.8,
     "gender_split": {
@@ -1765,7 +1766,9 @@
     "concordance_in_sample": 0.7672,
     "ph_violations": 0,
     "log_likelihood": 1412.66,
-    "log_likelihood_p": 2.4869761811107852e-303
+    "log_likelihood_p": 2.4869761811107852e-303,
+    "n_events": 1468,
+    "warning": null
   },
   "pricing": {
     "portfolio_totals": {

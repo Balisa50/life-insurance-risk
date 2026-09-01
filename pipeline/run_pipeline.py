@@ -1,10 +1,21 @@
 """
 Life Insurance Risk Model - Full Pipeline Runner
-Generates all analysis and exports to JSON for the Next.js dashboard.
+Runs all analysis and exports to JSON for the Next.js dashboard.
+
+By default the policyholder book is generated. Pass --data to run the same
+pipeline over a real portfolio extract instead:
+
+    python pipeline/run_pipeline.py --data pipeline/data/book.csv
+
+See src/portfolio.py for the columns that file needs. Only the policyholders
+come from the file: the deaths in stage 3 are still simulated from the life
+table, so a loaded run gives you real exposure and real pricing, not real
+mortality experience.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
@@ -17,12 +28,13 @@ import pandas as pd
 sys.path.insert(0, os.path.dirname(__file__))
 
 from src.mortality import generate_life_table, generate_policyholders
+from src.portfolio import PortfolioError, age_band_edges, load_policyholders
 from src.survival import simulate_policy_events, fit_kaplan_meier, fit_cox_ph
 from src.pricing import price_portfolio, premium_summary_by_group
 from src.monte_carlo import simulate_claims, scenario_analysis
 
 
-def run() -> None:
+def run(data_path: str | None = None, n: int = 10_000) -> None:
     start = time.time()
     print("=" * 60)
     print("  Life Insurance Risk Model Pipeline")
@@ -33,15 +45,25 @@ def run() -> None:
     life_table = generate_life_table(max_age=100)
     print(f"  Life table: {len(life_table)} ages, e0 = {life_table.loc[0, 'ex']:.1f} years")
 
-    # --- 2. Generate policyholders ---
-    print("\n[2/6] Generating 10,000 synthetic policyholders...")
-    policyholders = generate_policyholders(n=10_000)
+    # --- 2. Policyholder book, loaded or generated ---
+    if data_path:
+        print(f"\n[2/6] Loading policyholders from {data_path}...")
+        policyholders = load_policyholders(data_path)
+        data_source = os.path.basename(data_path)
+        print(f"  Loaded {len(policyholders):,} policies")
+    else:
+        print(f"\n[2/6] Generating {n:,} synthetic policyholders...")
+        policyholders = generate_policyholders(n=n)
+        data_source = "synthetic"
     print(f"  Ages: {policyholders['age'].min()}-{policyholders['age'].max()}")
     print(f"  Smokers: {policyholders['smoker'].mean()*100:.1f}%")
     print(f"  Total sum assured: ${policyholders['sum_assured'].sum():,.0f}")
 
     # --- 3. Survival analysis ---
     print("\n[3/6] Running survival analysis...")
+    if data_path:
+        print("  NOTE: the policyholders are real but the deaths below are still")
+        print("        simulated from the life table. This is not real experience.")
     events_df = simulate_policy_events(policyholders, life_table)
     death_rate = events_df["event"].mean()
     print(f"  Mortality rate over term: {death_rate*100:.2f}%")
@@ -57,7 +79,12 @@ def run() -> None:
     # Cox Proportional Hazards
     print("  Fitting Cox PH model...")
     cox_results = fit_cox_ph(events_df)
-    print(f"  Concordance index: {cox_results['concordance']:.4f}")
+    if cox_results["concordance"] is not None:
+        print(f"  Concordance (held out): {cox_results['concordance']:.4f}")
+    elif cox_results["concordance_in_sample"] is not None:
+        print(f"  Concordance (in sample): {cox_results['concordance_in_sample']:.4f}")
+    if cox_results["warning"]:
+        print(f"  WARNING: {cox_results['warning']}")
 
     # --- 4. Pricing ---
     print("\n[4/6] Pricing portfolio...")
@@ -92,10 +119,12 @@ def run() -> None:
 
     # Portfolio demographics
     age_dist = policyholders["age"].value_counts().sort_index()
-    age_bins = pd.cut(policyholders["age"], bins=[19, 30, 40, 50, 65], labels=["20-30", "31-40", "41-50", "51-65"])
+    age_edges, age_labels = age_band_edges(policyholders["age"])
+    age_bins = pd.cut(policyholders["age"], bins=age_edges, labels=age_labels)
     age_band_counts = age_bins.value_counts().sort_index().to_dict()
 
     demographics = {
+        "data_source": data_source,
         "total_policies": len(policyholders),
         "avg_age": round(float(policyholders["age"].mean()), 1),
         "gender_split": policyholders["gender"].value_counts().to_dict(),
@@ -177,5 +206,35 @@ def run() -> None:
     print("=" * 60)
 
 
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Run the life insurance risk pipeline and export dashboard JSON.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Required CSV columns: age, gender, smoker, bmi, health_score,\n"
+            "sum_assured, term_years. policy_id is optional.\n"
+            "See pipeline/example_book.csv for a working file."
+        ),
+    )
+    parser.add_argument(
+        "--data",
+        metavar="CSV",
+        help="policyholder book to load. Omit to generate a synthetic one.",
+    )
+    parser.add_argument(
+        "-n",
+        type=int,
+        default=10_000,
+        help="how many policyholders to generate. Ignored with --data. Default 10000.",
+    )
+    args = parser.parse_args()
+
+    try:
+        run(data_path=args.data, n=args.n)
+    except PortfolioError as exc:
+        print(f"\nCould not load the portfolio.\n\n{exc}\n", file=sys.stderr)
+        raise SystemExit(1)
+
+
 if __name__ == "__main__":
-    run()
+    main()

@@ -10,6 +10,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from .portfolio import age_band_edges
+
 
 def compute_risk_multiplier(row: pd.Series) -> float:
     """Compute individual hazard multiplier based on risk factors."""
@@ -107,7 +109,9 @@ def price_portfolio(
         ap_gross = ap_net * (1 + expense_loading)
 
         records.append({
-            "policy_id": int(row["policy_id"]),
+            # Left as-is rather than coerced to int: real policy numbers are
+            # alphanumeric (GNI-0001), and nothing downstream does arithmetic on it.
+            "policy_id": row["policy_id"],
             "age": int(row["age"]),
             "gender": row["gender"],
             "smoker": int(row["smoker"]),
@@ -130,11 +134,10 @@ def premium_summary_by_group(priced: pd.DataFrame) -> dict:
 
     # By age band
     priced = priced.copy()
-    priced["age_band"] = pd.cut(
-        priced["age"],
-        bins=[19, 30, 40, 50, 65],
-        labels=["20-30", "31-40", "41-50", "51-65"],
-    )
+    # Edges are derived from the data rather than hard-coded, so a loaded book
+    # with ages outside 20-64 is not silently dropped from the summary.
+    _edges, _labels = age_band_edges(priced["age"])
+    priced["age_band"] = pd.cut(priced["age"], bins=_edges, labels=_labels)
     age_stats = (
         priced.groupby("age_band", observed=True)
         .agg(

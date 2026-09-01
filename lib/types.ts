@@ -8,6 +8,8 @@ export interface LifeTableRow {
 }
 
 export interface Demographics {
+  /** "synthetic", or the filename the book was loaded from. */
+  data_source: string;
   total_policies: number;
   avg_age: number;
   gender_split: Record<string, number>;
@@ -46,13 +48,17 @@ export interface CoxCoefficient {
 
 export interface CoxPH {
   coefficients: CoxCoefficient[];
-  /** Scored on the held-out 30%. This is the figure worth quoting. */
-  concordance: number;
-  concordance_in_sample: number;
+  /** Scored on the held-out 30%. Null when the book had too few deaths to split. */
+  concordance: number | null;
+  concordance_in_sample: number | null;
   /** Covariates breaching proportional hazards at p < 0.05. null if the test could not run. */
   ph_violations: number | null;
-  log_likelihood: number;
-  log_likelihood_p: number;
+  log_likelihood: number | null;
+  log_likelihood_p: number | null;
+  /** Deaths the model was fitted on. Drives whether any of the above is trustworthy. */
+  n_events: number;
+  /** Set when the book is too small for the fit to mean anything. */
+  warning: string | null;
 }
 
 export interface PremiumGroupRow {
