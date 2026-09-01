@@ -12,6 +12,8 @@ from lifelines.statistics import proportional_hazard_test
 from lifelines.utils import concordance_index
 from sklearn.model_selection import train_test_split
 
+from .decrements import policy_year_rates
+
 RNG = np.random.default_rng(42)
 
 
@@ -20,19 +22,30 @@ def simulate_policy_events(
     life_table: pd.DataFrame,
 ) -> pd.DataFrame:
     """
-    Simulate death/survival events for each policyholder over their term.
+    Simulate how each policy ends: death, lapse, or reaching the end of term.
 
-    Uses the life table hazard rates with individual risk adjustments
-    based on smoker status, BMI, health score, and gender.
+    Two decrements now compete each year. Mortality comes from the life table
+    at attained age, scaled by the select factor for the policy duration and by
+    the individual's underwriting multiplier. Lapse comes from the duration
+    alone.
 
-    Returns DataFrame with columns:
-        policy_id, age, gender, smoker, bmi, health_score,
-        sum_assured, term_years, duration, event
+    For the survival analysis this matters in a specific way: a lapse is a
+    censoring event, not a claim. The policyholder walks away alive and we
+    never learn when they die. Treating lapses as anything other than censored
+    would bias the mortality estimate badly, since the people who lapse are
+    still very much alive on the day they leave.
+
+    Returns the input frame plus:
+        duration     years until the policy ended
+        event        1 if death, 0 if censored by lapse or by reaching term
+        exit_reason  "death", "lapse" or "maturity"
     """
-    lt_hazard = life_table.set_index("age")["hazard_rate"]
+    lt_qx = life_table.set_index("age")["qx"]
+    max_age = int(life_table["age"].max())
 
     durations = []
-    events = []  # 1 = death during term, 0 = survived (censored)
+    events = []
+    reasons = []
 
     for _, row in policyholders.iterrows():
         entry_age = int(row["age"])
@@ -44,38 +57,45 @@ def simulate_policy_events(
             multiplier *= 1.7
         if row["gender"] == "M":
             multiplier *= 1.12
-        # BMI risk
         bmi = row["bmi"]
         if bmi > 30:
             multiplier *= 1.0 + 0.02 * (bmi - 30)
         elif bmi < 18.5:
             multiplier *= 1.15
-        # Health score
         multiplier *= 1.0 + 0.15 * (row["health_score"] - 3)
 
-        # Simulate year by year
-        died = False
+        ended = False
         for t in range(1, term + 1):
-            current_age = entry_age + t - 1
-            if current_age > 100:
-                current_age = 100
-            base_hazard = lt_hazard.get(current_age, lt_hazard.iloc[-1])
-            adj_hazard = base_hazard * multiplier
-            prob_death = 1 - np.exp(-adj_hazard)
+            duration = t - 1
+            attained = min(entry_age + duration, max_age)
+            base_q = float(lt_qx.loc[attained])
+            q_death, q_lapse = policy_year_rates(base_q, duration, multiplier)
 
-            if RNG.random() < prob_death:
+            # One draw decides between three outcomes, which keeps the two
+            # decrements genuinely competing rather than resolved in sequence.
+            u = RNG.random()
+            if u < q_death:
                 durations.append(t)
                 events.append(1)
-                died = True
+                reasons.append("death")
+                ended = True
+                break
+            if u < q_death + q_lapse:
+                durations.append(t)
+                events.append(0)
+                reasons.append("lapse")
+                ended = True
                 break
 
-        if not died:
+        if not ended:
             durations.append(term)
             events.append(0)
+            reasons.append("maturity")
 
     result = policyholders.copy()
     result["duration"] = durations
     result["event"] = events
+    result["exit_reason"] = reasons
 
     return result
 

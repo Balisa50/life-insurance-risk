@@ -8,6 +8,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from .decrements import policy_year_rates
+
 RNG = np.random.default_rng(42)
 
 
@@ -54,37 +56,51 @@ def simulate_claims(
     terms = policyholders["term_years"].values
     n_policies = len(policyholders)
 
-    # Pre-compute adjusted qx for each policyholder for each year of horizon
-    # Shape: (n_policies, horizon_years)
+    # Pre-compute both decrements for each policyholder for each year of the
+    # horizon. Shape: (n_policies, horizon_years).
+    #
+    # The projection runs from policy inception, so the year index is also the
+    # policy duration, which is what the select factor and the lapse rate are
+    # both keyed on.
     adj_qx = np.zeros((n_policies, horizon_years))
+    lapse_qx = np.zeros((n_policies, horizon_years))
     for t in range(horizon_years):
         for i in range(n_policies):
             if t >= terms[i]:
-                adj_qx[i, t] = 0.0  # Policy expired
-            else:
-                current_age = min(int(ages[i]) + t, 100)
-                base_q = 1 - np.exp(-lt_hazard.get(current_age, lt_hazard.iloc[-1]))
-                adj_qx[i, t] = min(base_q * multipliers[i], 1.0)
+                continue  # policy has already matured, no decrement applies
+            current_age = min(int(ages[i]) + t, 100)
+            base_q = 1 - np.exp(-lt_hazard.get(current_age, lt_hazard.iloc[-1]))
+            q_death, q_lapse = policy_year_rates(base_q, t, multipliers[i])
+            adj_qx[i, t] = q_death
+            lapse_qx[i, t] = q_lapse
 
     claim_totals = np.zeros(n_simulations)
     death_counts = np.zeros(n_simulations, dtype=int)
+    lapse_counts = np.zeros(n_simulations, dtype=int)
 
     for sim in range(n_simulations):
         total_claims = 0.0
         deaths = 0
-        alive = np.ones(n_policies, dtype=bool)
+        lapses = 0
+        # In force means alive and still paying. A lapsed policy is off risk
+        # just as completely as a dead one, and considerably cheaper.
+        in_force = np.ones(n_policies, dtype=bool)
 
         for t in range(horizon_years):
-            # Random uniform for each alive policyholder
             rands = RNG.random(n_policies)
-            # Death if rand < adj_qx AND still alive AND policy not expired
-            dying = alive & (rands < adj_qx[:, t]) & (t < terms)
+            active = in_force & (t < terms)
+            dying = active & (rands < adj_qx[:, t])
+            lapsing = active & ~dying & (rands < adj_qx[:, t] + lapse_qx[:, t])
+
             total_claims += sums[dying].sum()
             deaths += dying.sum()
-            alive[dying] = False
+            lapses += lapsing.sum()
+            in_force[dying] = False
+            in_force[lapsing] = False
 
         claim_totals[sim] = total_claims
         death_counts[sim] = deaths
+        lapse_counts[sim] = lapses
 
     # Summary statistics
     mean_claims = float(np.mean(claim_totals))
@@ -137,6 +153,7 @@ def simulate_claims(
         "mean_claims": round(mean_claims, 2),
         "std_claims": round(std_claims, 2),
         "mean_deaths": round(float(np.mean(death_counts)), 1),
+        "mean_lapses": round(float(np.mean(lapse_counts)), 1),
         "percentiles": {k: round(v, 2) for k, v in percentiles.items()},
         "var_995": round(var_995, 2),
         "tvar_995": round(tvar_995, 2),

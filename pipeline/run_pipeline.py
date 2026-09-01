@@ -28,6 +28,7 @@ import pandas as pd
 sys.path.insert(0, os.path.dirname(__file__))
 
 from src.mortality import generate_life_table, generate_policyholders
+from src.decrements import basis_summary, generate_select_table, persistency_curve
 from src.portfolio import PortfolioError, age_band_edges, load_policyholders
 from src.survival import simulate_policy_events, fit_kaplan_meier, fit_cox_ph
 from src.pricing import price_portfolio, premium_summary_by_group
@@ -44,6 +45,8 @@ def run(data_path: str | None = None, n: int = 10_000) -> None:
     print("\n[1/6] Generating life table (Gompertz-Makeham)...")
     life_table = generate_life_table(max_age=100)
     print(f"  Life table: {len(life_table)} ages, e0 = {life_table.loc[0, 'ex']:.1f} years")
+    select = basis_summary()
+    print(f"  Select period: {select['select_period']} years, duration 0 mortality at {select['select_factors'][0]['factor']:.0%} of ultimate")
 
     # --- 2. Policyholder book, loaded or generated ---
     if data_path:
@@ -68,6 +71,9 @@ def run(data_path: str | None = None, n: int = 10_000) -> None:
     death_rate = events_df["event"].mean()
     print(f"  Mortality rate over term: {death_rate*100:.2f}%")
     print(f"  Total deaths: {events_df['event'].sum()}")
+    reasons = events_df["exit_reason"].value_counts()
+    print(f"  Ended by lapse: {int(reasons.get('lapse', 0)):,} ({reasons.get('lapse', 0) / len(events_df) * 100:.1f}%)")
+    print(f"  Reached maturity: {int(reasons.get('maturity', 0)):,}")
 
     # Kaplan-Meier curves
     print("  Fitting Kaplan-Meier curves...")
@@ -92,6 +98,8 @@ def run(data_path: str | None = None, n: int = 10_000) -> None:
     print(f"  Avg net single premium: ${priced['net_single_premium'].mean():,.2f}")
     print(f"  Avg annual gross premium: ${priced['annual_premium_gross'].mean():,.2f}")
     print(f"  Total annual premium income: ${priced['annual_premium_gross'].sum():,.0f}")
+    print(f"  Expected to reach end of term: {priced['in_force_end'].mean()*100:.1f}%")
+    print(f"  Lapse credit in the price: {priced['lapse_credit'].mean()*100:.1f}% cheaper than pricing without lapses")
 
     premium_summaries = premium_summary_by_group(priced)
 
@@ -151,6 +159,8 @@ def run(data_path: str | None = None, n: int = 10_000) -> None:
     mortality_summary = {
         "total_deaths": int(events_df["event"].sum()),
         "death_rate": round(death_rate, 4),
+        "exit_reasons": {str(k): int(v) for k, v in events_df["exit_reason"].value_counts().to_dict().items()},
+        "lapse_rate": round(float((events_df["exit_reason"] == "lapse").mean()), 4),
         "avg_duration_at_death": round(
             float(events_df[events_df["event"] == 1]["duration"].mean()), 1
         ) if events_df["event"].sum() > 0 else 0,
@@ -167,6 +177,9 @@ def run(data_path: str | None = None, n: int = 10_000) -> None:
             "chart": lt_chart,
             "full": lt_full,
         },
+        "basis": basis_summary(),
+        "select_table": generate_select_table(life_table),
+        "persistency": persistency_curve(30),
         "demographics": demographics,
         "survival": {
             "mortality_summary": mortality_summary,
@@ -183,6 +196,9 @@ def run(data_path: str | None = None, n: int = 10_000) -> None:
                 "total_annual_gross": round(float(priced["annual_premium_gross"].sum()), 2),
                 "avg_nsp": round(float(priced["net_single_premium"].mean()), 2),
                 "avg_annual_gross": round(float(priced["annual_premium_gross"].mean()), 2),
+                "avg_annual_gross_no_lapse": round(float(priced["annual_premium_no_lapse"].mean()), 2),
+                "avg_lapse_credit": round(float(priced["lapse_credit"].mean()), 4),
+                "avg_in_force_end": round(float(priced["in_force_end"].mean()), 4),
             },
             "summaries": premium_summaries,
         },

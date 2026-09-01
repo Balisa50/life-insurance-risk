@@ -18,6 +18,8 @@ import {
 
 import type {
   PipelineData,
+  Basis,
+  SelectTableRow,
   CoxCoefficient,
   HistogramBin,
   ScenarioResult,
@@ -81,6 +83,7 @@ const NAV_ITEMS = [
   { href: "#mortality", label: "Mortality" },
   { href: "#survival", label: "Survival" },
   { href: "#cox", label: "Cox PH" },
+  { href: "#persistency", label: "Persistency" },
   { href: "#pricing", label: "Pricing" },
   { href: "#montecarlo", label: "Monte Carlo" },
   { href: "#scenarios", label: "Scenarios" },
@@ -112,7 +115,8 @@ function Nav() {
 /* ─── main dashboard ─── */
 
 export function Dashboard({ data }: { data: PipelineData }) {
-  const { demographics: demo, life_table, survival, cox_ph, pricing, monte_carlo, scenarios } = data;
+  const { demographics: demo, life_table, survival, cox_ph, pricing, monte_carlo, scenarios,
+          basis, select_table, persistency } = data;
 
   return (
     <>
@@ -238,6 +242,49 @@ export function Dashboard({ data }: { data: PipelineData }) {
               </AreaChart>
             </ResponsiveContainer>
           </Card>
+
+          <Card className="mt-6">
+            <h3 className="text-sm font-medium text-text-secondary mb-1">
+              Select and Ultimate Mortality
+            </h3>
+            <p className="text-xs text-text-secondary mb-4">
+              q[x]+t, the rate for a life underwritten at age x and now t years into the
+              policy. Reading a row left to right shows the effect of underwriting wearing
+              off over the {basis.select_period}-year select period. The ultimate column is
+              the rate the row converges to, which depends on attained age alone.
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-text-secondary">
+                    <th className="text-left py-3 px-3 font-medium">Entry age</th>
+                    {Array.from({ length: basis.select_period }, (_, t) => (
+                      <th key={t} className="text-right py-3 px-3 font-medium whitespace-nowrap">
+                        q[x]+{t}
+                      </th>
+                    ))}
+                    <th className="text-right py-3 px-3 font-medium whitespace-nowrap">Ultimate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {select_table.map((r: SelectTableRow) => (
+                    <tr key={r.entry_age} className="border-b border-border/50 hover:bg-surface-hover transition-colors">
+                      <td className="py-3 px-3 font-mono text-accent">{r.entry_age}</td>
+                      {Array.from({ length: basis.select_period }, (_, t) => (
+                        <td key={t} className="py-3 px-3 text-right font-mono tabular-nums">
+                          {(r[`d${t}`] as number).toFixed(6)}
+                        </td>
+                      ))}
+                      <td className="py-3 px-3 text-right font-mono tabular-nums font-semibold">
+                        {r.ultimate.toFixed(6)}
+                        <span className="text-text-secondary font-normal"> @{r.ultimate_age}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
         </section>
 
         {/* ══════════ SURVIVAL ANALYSIS ══════════ */}
@@ -252,6 +299,7 @@ export function Dashboard({ data }: { data: PipelineData }) {
             <Card><Stat label="Total Deaths" value={survival.mortality_summary.total_deaths.toLocaleString()} /></Card>
             <Card><Stat label="Mortality Rate" value={pct(survival.mortality_summary.death_rate)} /></Card>
             <Card><Stat label="Avg Duration at Death" value={`${survival.mortality_summary.avg_duration_at_death} yrs`} /></Card>
+            <Card><Stat label="Lapsed" value={pct(survival.mortality_summary.lapse_rate)} sub="censored, not claims" /></Card>
             <Card>
               <Stat
                 label="Male / Female Deaths"
@@ -461,6 +509,105 @@ export function Dashboard({ data }: { data: PipelineData }) {
           </Card>
         </section>
 
+        {/* ══════════ PERSISTENCY ══════════ */}
+        <section>
+          <SectionTitle
+            id="persistency"
+            title="Persistency and Lapses"
+            subtitle={`${pct(basis.lapse_rates[0].rate)} lapse in year one, falling to ${pct(basis.ultimate_lapse)} ultimate | ${pct(pricing.portfolio_totals.avg_in_force_end)} of policies expected to reach the end of their term`}
+          />
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+            <Card><Stat label="Year 1 Lapse" value={pct(basis.lapse_rates[0].rate)} /></Card>
+            <Card><Stat label="Ultimate Lapse" value={pct(basis.ultimate_lapse)} sub={`from duration ${basis.lapse_rates.length - 1}`} /></Card>
+            <Card><Stat label="In Force at 10 yrs" value={pct(persistency[10]?.in_force ?? 0)} sub="lapses only" /></Card>
+            <Card><Stat label="In Force at 20 yrs" value={pct(persistency[20]?.in_force ?? 0)} sub="lapses only" /></Card>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-6">
+            <Card>
+              <h3 className="text-sm font-medium text-text-secondary mb-4">
+                Persistency Curve
+              </h3>
+              <ResponsiveContainer width="100%" height={260}>
+                <AreaChart data={persistency}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
+                  <XAxis dataKey="duration" tick={{ fill: "#737373", fontSize: 12 }} label={{ value: "Policy year", position: "insideBottom", offset: -4, fill: "#737373", fontSize: 11 }} />
+                  <YAxis tick={{ fill: "#737373", fontSize: 12 }} domain={[0, 1]} tickFormatter={(v) => pct(v, 0)} />
+                  <Tooltip
+                    contentStyle={{ background: "#141414", border: "1px solid #262626", borderRadius: 8 }}
+                    formatter={(v) => pct(Number(v))}
+                    labelFormatter={(l) => `Policy year ${l}`}
+                  />
+                  <Area type="monotone" dataKey="in_force" stroke="#06b6d4" fill="#06b6d4" fillOpacity={0.12} strokeWidth={2} name="In force" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </Card>
+
+            <Card>
+              <h3 className="text-sm font-medium text-text-secondary mb-4">
+                Lapse Rate by Duration
+              </h3>
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={basis.lapse_rates}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
+                  <XAxis dataKey="duration" tick={{ fill: "#737373", fontSize: 12 }} label={{ value: "Policy year", position: "insideBottom", offset: -4, fill: "#737373", fontSize: 11 }} />
+                  <YAxis tick={{ fill: "#737373", fontSize: 12 }} tickFormatter={(v) => pct(v, 0)} />
+                  <Tooltip
+                    contentStyle={{ background: "#141414", border: "1px solid #262626", borderRadius: 8 }}
+                    formatter={(v) => pct(Number(v))}
+                    labelFormatter={(l) => `Policy year ${l}`}
+                  />
+                  <Bar dataKey="rate" fill="#ec4899" radius={[4, 4, 0, 0]} name="Lapse rate" />
+                </BarChart>
+              </ResponsiveContainer>
+            </Card>
+          </div>
+
+          <Card className="mt-6">
+            <h3 className="text-sm font-medium text-text-secondary mb-4">Select Factors</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-text-secondary">
+                    <th className="text-left py-3 px-3 font-medium">Policy year</th>
+                    {basis.select_factors.map((f) => (
+                      <th key={f.duration} className="text-right py-3 px-3 font-medium">{f.duration}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-b border-border/50">
+                    <td className="py-3 px-3 text-text-secondary">Mortality vs ultimate</td>
+                    {basis.select_factors.map((f) => (
+                      <td key={f.duration} className="py-3 px-3 text-right font-mono tabular-nums">
+                        {pct(f.factor, 0)}
+                      </td>
+                    ))}
+                  </tr>
+                  <tr>
+                    <td className="py-3 px-3 text-text-secondary">Lapse rate</td>
+                    {basis.select_factors.map((f) => {
+                      const l = basis.lapse_rates.find((r) => r.duration === f.duration);
+                      return (
+                        <td key={f.duration} className="py-3 px-3 text-right font-mono tabular-nums">
+                          {l ? pct(l.rate, 0) : "-"}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          <p className="mt-6 border-l-2 border-warning pl-4 text-sm text-text-secondary">
+            {basis.note} Lapses are treated as censoring in the survival analysis, never as
+            claims: a policyholder who stops paying walks away alive, and counting them as
+            deaths would bias the mortality estimate badly.
+          </p>
+        </section>
+
         {/* ══════════ PRICING ══════════ */}
         <section>
           <SectionTitle
@@ -474,7 +621,29 @@ export function Dashboard({ data }: { data: PipelineData }) {
             <Card><Stat label="Avg Annual Premium" value={usd(pricing.portfolio_totals.avg_annual_gross)} sub="gross" /></Card>
             <Card><Stat label="Total Annual Income" value={usd(pricing.portfolio_totals.total_annual_gross)} /></Card>
             <Card><Stat label="Total NSP" value={usd(pricing.portfolio_totals.total_nsp)} /></Card>
+            <Card>
+              <Stat
+                label="Priced Without Lapses"
+                value={usd(pricing.portfolio_totals.avg_annual_gross_no_lapse)}
+                sub={`${pct(pricing.portfolio_totals.avg_lapse_credit)} lapse credit`}
+              />
+            </Card>
+            <Card>
+              <Stat
+                label="Reach End of Term"
+                value={pct(pricing.portfolio_totals.avg_in_force_end)}
+                sub="expected"
+              />
+            </Card>
           </div>
+
+          <p className="mb-6 border-l-2 border-warning pl-4 text-sm text-text-secondary">
+            Taking credit for lapses makes the book {pct(pricing.portfolio_totals.avg_lapse_credit)} cheaper,
+            because policyholders who leave a term assurance forfeit everything and were
+            never going to claim. That is a real effect and a real exposure: if persistency
+            comes in better than assumed, the book is underpriced. A reserving basis would
+            not take the same credit a pricing basis does.
+          </p>
 
           <div className="grid md:grid-cols-2 gap-6">
             <Card>

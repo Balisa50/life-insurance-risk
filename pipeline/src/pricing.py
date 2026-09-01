@@ -10,6 +10,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from .decrements import policy_year_rates
 from .portfolio import age_band_edges
 
 
@@ -29,6 +30,67 @@ def compute_risk_multiplier(row: pd.Series) -> float:
     return m
 
 
+def policy_factors(
+    entry_age: int,
+    term: int,
+    risk_multiplier: float,
+    life_table: pd.DataFrame,
+    interest_rate: float = 0.06,
+    include_lapse: bool = True,
+) -> dict:
+    """
+    Walk one policy year by year and return the two present values that price it.
+
+    Both sides of the equivalence principle have to be weighted by the same
+    in-force curve, because a policyholder who has lapsed neither claims nor
+    pays. Running the two decrements together in one loop is the only way to
+    keep them consistent.
+
+    Returns:
+        epv_benefit   present value of the death benefit, per 1 of sum assured
+        annuity_due   present value of 1 paid at the start of each year the
+                      policy is still in force
+        in_force_end  share of policies expected to reach the end of the term
+        expected_lapses / expected_deaths, as shares of the original policy
+    """
+    lt = life_table.set_index("age")
+    max_age = int(life_table["age"].max())
+    v = 1.0 / (1.0 + interest_rate)
+
+    epv_benefit = 0.0
+    annuity_due = 0.0
+    in_force = 1.0
+    total_deaths = 0.0
+    total_lapses = 0.0
+
+    for t in range(1, term + 1):
+        duration = t - 1
+        attained = min(entry_age + duration, max_age)
+        base_q = float(lt.loc[attained, "qx"])
+        aq_death, aq_lapse = policy_year_rates(
+            base_q, duration, risk_multiplier, include_lapse
+        )
+
+        # Premium falls due at the start of the year, so it is discounted for
+        # duration years and paid only if the policy is in force at that point.
+        annuity_due += (v ** duration) * in_force
+
+        # Death benefit is paid at the end of the year it occurs in.
+        epv_benefit += (v ** t) * in_force * aq_death
+
+        total_deaths += in_force * aq_death
+        total_lapses += in_force * aq_lapse
+        in_force = max(0.0, in_force * (1.0 - aq_death - aq_lapse))
+
+    return {
+        "epv_benefit": epv_benefit,
+        "annuity_due": annuity_due,
+        "in_force_end": in_force,
+        "expected_deaths": total_deaths,
+        "expected_lapses": total_lapses,
+    }
+
+
 def net_single_premium(
     entry_age: int,
     term: int,
@@ -36,46 +98,36 @@ def net_single_premium(
     risk_multiplier: float,
     life_table: pd.DataFrame,
     interest_rate: float = 0.06,
+    include_lapse: bool = True,
 ) -> float:
     """
-    Calculate the net single premium (NSP) for a term life policy.
+    Net single premium for a term assurance: the discounted expected claim.
 
-    NSP = sum over t=1..term of:
-        v^t * t-1_p_x * q_{x+t-1} * SA
+        NSP = sum over t of  v^t * (t-1)p_x * (aq)_death * SA
 
-    where v = 1/(1+i) is the discount factor.
+    where (t-1)p_x is now survival in force, meaning alive AND still paying,
+    and (aq)_death is the dependent mortality rate after competition with
+    lapses. Set include_lapse False to price on mortality alone.
     """
-    lt = life_table.set_index("age")
-    v = 1.0 / (1.0 + interest_rate)
-
-    nsp = 0.0
-    survival_prob = 1.0  # t-1_p_x
-
-    for t in range(1, term + 1):
-        current_age = min(entry_age + t - 1, 100)
-        qx = lt.loc[current_age, "qx"]
-        # Adjust mortality by risk multiplier
-        adj_qx = min(qx * risk_multiplier, 1.0)
-
-        # Present value of death benefit at time t
-        nsp += (v ** t) * survival_prob * adj_qx * sum_assured
-
-        # Update survival probability
-        survival_prob *= (1 - adj_qx)
-
-    return nsp
+    f = policy_factors(
+        entry_age, term, risk_multiplier, life_table, interest_rate, include_lapse
+    )
+    return f["epv_benefit"] * sum_assured
 
 
-def annual_premium(nsp: float, term: int, interest_rate: float = 0.06) -> float:
+def annual_premium(nsp: float, annuity_due: float) -> float:
     """
-    Convert NSP to level annual premium using annuity-due factor.
+    Spread a single premium over the term.
 
-    P = NSP / annuity_due(term, i)
-    annuity_due = (1 - v^term) / d, where d = i/(1+i)
+        P = NSP / annuity_due
+
+    The annuity factor is the one from policy_factors, weighted by the in-force
+    curve. This used to be an annuity-certain, (1 - v^n)/d, which assumes the
+    policyholder keeps paying for the full term whether or not they are alive
+    or still on the books. That factor is too large, so it produced a level
+    premium that was too small. Weighting it properly raises the premium, and
+    the gap widens with age and term.
     """
-    v = 1.0 / (1.0 + interest_rate)
-    d = interest_rate / (1.0 + interest_rate)
-    annuity_due = (1 - v ** term) / d
     return nsp / annuity_due if annuity_due > 0 else 0.0
 
 
@@ -97,16 +149,34 @@ def price_portfolio(
 
     for _, row in policyholders.iterrows():
         rm = compute_risk_multiplier(row)
-        nsp = net_single_premium(
+        f = policy_factors(
             entry_age=int(row["age"]),
             term=int(row["term_years"]),
-            sum_assured=float(row["sum_assured"]),
             risk_multiplier=rm,
             life_table=life_table,
             interest_rate=interest_rate,
         )
-        ap_net = annual_premium(nsp, int(row["term_years"]), interest_rate)
+        nsp = f["epv_benefit"] * float(row["sum_assured"])
+        ap_net = annual_premium(nsp, f["annuity_due"])
         ap_gross = ap_net * (1 + expense_loading)
+
+        # The same policy priced with no lapse assumption at all. Taking credit
+        # for lapses makes a term policy cheaper, because the people who leave
+        # forfeit everything and were never going to claim. That is a real
+        # effect and also a real exposure: if persistency comes in better than
+        # assumed, the book is underpriced. Pricing it both ways keeps the size
+        # of that bet visible instead of buried in the basis.
+        f_nl = policy_factors(
+            entry_age=int(row["age"]),
+            term=int(row["term_years"]),
+            risk_multiplier=rm,
+            life_table=life_table,
+            interest_rate=interest_rate,
+            include_lapse=False,
+        )
+        ap_gross_nl = annual_premium(
+            f_nl["epv_benefit"] * float(row["sum_assured"]), f_nl["annuity_due"]
+        ) * (1 + expense_loading)
 
         records.append({
             # Left as-is rather than coerced to int: real policy numbers are
@@ -123,6 +193,11 @@ def price_portfolio(
             "net_single_premium": round(nsp, 2),
             "annual_premium_net": round(ap_net, 2),
             "annual_premium_gross": round(ap_gross, 2),
+            "annual_premium_no_lapse": round(ap_gross_nl, 2),
+            "lapse_credit": round(1 - ap_gross / ap_gross_nl, 4) if ap_gross_nl > 0 else 0.0,
+            "annuity_due": round(f["annuity_due"], 4),
+            "in_force_end": round(f["in_force_end"], 4),
+            "expected_lapses": round(f["expected_lapses"], 4),
         })
 
     return pd.DataFrame(records)
