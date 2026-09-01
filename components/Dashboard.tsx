@@ -39,8 +39,12 @@ const CHART_COLORS = [
 /* ─── reusable blocks ─── */
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  // min-w-0 is load-bearing. A grid item defaults to min-width:auto, so without
+  // this a Card refuses to shrink below its content and the Recharts
+  // ResponsiveContainer inside it measures a parent wider than the viewport.
+  // On a phone that pushed the whole page to ~1228px against a 375px screen.
   return (
-    <div className={`rounded-xl border border-border bg-surface p-5 ${className}`}>
+    <div className={`min-w-0 rounded-xl border border-border bg-surface p-5 ${className}`}>
       {children}
     </div>
   );
