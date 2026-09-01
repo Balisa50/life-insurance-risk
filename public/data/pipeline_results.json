@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-16T11:09:42.940113",
+  "generated_at": "2026-09-01T04:25:05.676371",
   "life_table": {
     "chart": [
       {
@@ -1761,7 +1761,9 @@
         "ci_upper": 1.4381
       }
     ],
-    "concordance": 0.7722,
+    "concordance": 0.7843,
+    "concordance_in_sample": 0.7672,
+    "ph_violations": 0,
     "log_likelihood": 1412.66,
     "log_likelihood_p": 2.4869761811107852e-303
   },
