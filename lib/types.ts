@@ -46,7 +46,11 @@ export interface CoxCoefficient {
 
 export interface CoxPH {
   coefficients: CoxCoefficient[];
+  /** Scored on the held-out 30%. This is the figure worth quoting. */
   concordance: number;
+  concordance_in_sample: number;
+  /** Covariates breaching proportional hazards at p < 0.05. null if the test could not run. */
+  ph_violations: number | null;
   log_likelihood: number;
   log_likelihood_p: number;
 }

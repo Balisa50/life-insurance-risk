@@ -355,7 +355,15 @@ export function Dashboard({ data }: { data: PipelineData }) {
           <SectionTitle
             id="cox"
             title="Cox Proportional Hazards"
-            subtitle={`Concordance index: ${cox_ph.concordance} | Log-likelihood ratio: ${cox_ph.log_likelihood}`}
+            subtitle={[
+              `Concordance ${cox_ph.concordance} held out, ${cox_ph.concordance_in_sample} in sample`,
+              cox_ph.ph_violations === null
+                ? null
+                : `Proportional hazards: ${cox_ph.ph_violations} of ${cox_ph.coefficients.length} covariates breach at p < 0.05`,
+              `Log-likelihood ratio: ${cox_ph.log_likelihood}`,
+            ]
+              .filter(Boolean)
+              .join(" | ")}
           />
 
           <Card>
