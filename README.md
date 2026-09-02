@@ -14,7 +14,7 @@ All data is synthetic. This demonstrates the method, it does not measure real mo
 
 **Portfolio**: 10,000 synthetic policyholders aged 20 to 64, total sum assured $493.7m. Each carries a hazard multiplier standing in for underwriting: smoking 1.7x, male 1.12x, BMI threshold effects above 30 and below 18.5, and a 1 to 5 health score centred on 3.
 
-**Survival analysis**: Kaplan-Meier curves overall and split by sex, smoker status and health score. Cox proportional hazards for covariate effects, fitted on a stratified 70% and scored on the held-out 30%. Concordance 0.765 held out. The proportional hazards assumption is tested rather than assumed: 0 of 5 covariates breach at p < 0.05. Of 10,000 policies, 688 end in death, 5,836 lapse and 3,476 reach maturity.
+**Survival analysis**: Kaplan-Meier curves overall and split by sex, smoker status and health score. Cox proportional hazards for covariate effects, fitted on a stratified 70% and scored on the held-out 30%. Concordance 0.765 held out. The proportional hazards assumption is tested rather than assumed: 1 of 5 covariates breaches at p < 0.05, BMI at p = 0.034. That is the same covariate flagged in the limitations below, entered as a single linear term when it was generated as a threshold effect, so a misspecified functional form showing up as a time-varying effect is the expected consequence rather than a surprise. The other four hold. Of 10,000 policies, 688 end in death, 5,836 lapse and 3,476 reach maturity.
 
 **Premium pricing**: Net single premium as the discounted expected claim, `sum over t of v^t * (t-1)p_x * (aq)_death * SA` at 6% interest, where `(t-1)p_x` is survival *in force* (alive and still paying). Converted to a level annual premium by dividing by a decrement-weighted annuity-due, then loaded 15% for expenses. Average annual gross premium $306, ranging from $61 in the 20-30 age band to $682 in the 51-65 band. Smokers average $431 against non-smokers at $262.
 
@@ -22,7 +22,7 @@ The annuity factor used to be an annuity-*certain*, `(1 - v^n)/d`, which assumes
 
 **Lapse credit**: pricing with the lapse assumption makes the book 15.7% cheaper than pricing without it, because policyholders who leave a term assurance forfeit everything and were never going to claim. That is a real effect and a real exposure. If persistency comes in better than assumed, the book is underpriced. Both prices are computed and reported side by side so the size of that bet stays visible. A reserving basis would not take the same credit a pricing basis does.
 
-**Stress testing**: Monte Carlo over a 5-year horizon, with both decrements running. 5,000 simulations for the baseline claim distribution, then 2,000 simulations for each of four mortality shock scenarios (1.0x, 1.25x, 1.6x, 2.5x). Reports VaR and TVaR at the 99.5th percentile, which is the Solvency II calibration. Baseline VaR is $8.4m against mean claims of $6.0m, but mean claims under the 1.6x shock are $9.6m, so capital held against a 1-in-200 normal year still does not cover an average severe-pandemic year.
+**Stress testing**: Monte Carlo over a 5-year horizon, with both decrements running. 5,000 simulations for the baseline claim distribution and 5,000 for each mortality shock scenario (1.25x, 1.6x, 2.5x). The 1.0x row is the baseline run itself rather than a second sample of it, so the table and the headline report one number instead of two that differ by sampling noise. Reports VaR and TVaR at the 99.5th percentile, which is the Solvency II calibration. Baseline VaR is $8.19m against mean claims of $6.04m, but mean claims under the 1.6x shock are $9.59m, so capital held against a 1-in-200 normal year still does not cover an average severe-pandemic year.
 
 ## Known limitations
 
@@ -33,7 +33,7 @@ The annuity factor used to be an annuity-*certain*, `(1 - v^n)/d`, which assumes
 - No reinsurance, no commission, no mortality improvement, no surrender values.
 - Lapse rates depend on duration alone. In practice they vary by premium size, distribution channel, age and payment method.
 - Priced in USD at a flat 6%, neither of which is right for a Gambian book.
-- BMI enters the Cox model as a single linear term but was generated as a threshold effect, so it comes out insignificant. Bands or a spline would fix it.
+- BMI enters the Cox model as a single linear term but was generated as a threshold effect, so it comes out insignificant and is also the one covariate that breaches proportional hazards. Bands or a spline would fix both. Its hazard ratio should not be read as meaningful in the meantime.
 - `required_reserve` is arithmetically identical to `var_995`, because risk margin is defined as VaR minus mean. A real reserve would be a best estimate plus a risk adjustment on a separate, more prudent basis.
 
 ## Stack

@@ -239,12 +239,23 @@ def fit_cox_ph(events_df: pd.DataFrame, test_size: float = 0.3, seed: int = 42) 
     # Proportional hazards is the assumption the whole model rests on. If a
     # covariate's effect changes over time, its coefficient is an average of
     # something that never held, and the hazard ratios are not interpretable.
-    # Reported as a count so a reader can see it was checked.
+    # The count alone is not actionable, so the offending covariates are named
+    # with their p-values. A reader can then judge which hazard ratio to
+    # distrust rather than being told only that something, somewhere, failed.
     try:
         ph_table = proportional_hazard_test(cph, df, time_transform="rank").summary
-        ph_violations = int((ph_table["p"] < 0.05).sum())
+        breaches = ph_table[ph_table["p"] < 0.05]
+        ph_violations = int(len(breaches))
+        ph_tested = int(len(ph_table))
+        ph_breaching = [
+            {"covariate": str(idx[0] if isinstance(idx, tuple) else idx),
+             "p_value": round(float(row["p"]), 6)}
+            for idx, row in breaches.iterrows()
+        ]
     except Exception:
         ph_violations = None
+        ph_tested = None
+        ph_breaching = []
 
     summary = cph.summary
 
@@ -269,8 +280,11 @@ def fit_cox_ph(events_df: pd.DataFrame, test_size: float = 0.3, seed: int = 42) 
         "concordance_in_sample": round(concordance_in_sample, 4),
         # A Cox model whose covariates breach proportional hazards has
         # meaningless coefficients, so the check is run and reported rather
-        # than assumed. 0 of 5 breach on the synthetic book.
+        # than assumed. The result is whatever the run produces; do not
+        # restate a remembered figure here or in the README.
         "ph_violations": ph_violations,
+        "ph_tested": ph_tested,
+        "ph_breaching": ph_breaching,
         "log_likelihood": round(float(cph.log_likelihood_ratio_test().test_statistic), 2),
         "log_likelihood_p": float(cph.log_likelihood_ratio_test().p_value),
         "n_events": n_events,

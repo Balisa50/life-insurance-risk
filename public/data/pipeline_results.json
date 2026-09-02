@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-01T10:19:39.175222",
+  "generated_at": "2026-09-02T02:14:28.846658",
   "life_table": {
     "chart": [
       {
@@ -2002,6 +2002,13 @@
     "concordance": 0.765,
     "concordance_in_sample": 0.7665,
     "ph_violations": 1,
+    "ph_tested": 5,
+    "ph_breaching": [
+      {
+        "covariate": "bmi",
+        "p_value": 0.034286
+      }
+    ],
     "log_likelihood": 651.44,
     "log_likelihood_p": 1.5487966357874195e-138,
     "n_events": 688,
@@ -2539,38 +2546,42 @@
     {
       "scenario": "Baseline",
       "mortality_shock": 1.0,
-      "mean_claims": 6044575.0,
-      "var_995": 8380050.0,
-      "tvar_995": 8552500.0,
-      "mean_deaths": 123.3,
-      "required_reserve": 8380050.0
+      "mean_claims": 6043996.0,
+      "var_995": 8185025.0,
+      "tvar_995": 8594600.0,
+      "mean_deaths": 123.4,
+      "required_reserve": 8185025.0,
+      "n_simulations": 5000
     },
     {
       "scenario": "Mild pandemic",
       "mortality_shock": 1.25,
-      "mean_claims": 7507767.5,
-      "var_995": 9960050.0,
-      "tvar_995": 10257000.0,
-      "mean_deaths": 153.6,
-      "required_reserve": 9960050.0
+      "mean_claims": 7500003.0,
+      "var_995": 9950000.0,
+      "tvar_995": 10172115.38,
+      "mean_deaths": 153.4,
+      "required_reserve": 9950000.0,
+      "n_simulations": 5000
     },
     {
       "scenario": "Severe pandemic",
       "mortality_shock": 1.6,
-      "mean_claims": 9551785.0,
-      "var_995": 11985150.0,
-      "tvar_995": 12191500.0,
-      "mean_deaths": 195.6,
-      "required_reserve": 11985150.0
+      "mean_claims": 9589260.0,
+      "var_995": 12340000.0,
+      "tvar_995": 12678269.23,
+      "mean_deaths": 196.0,
+      "required_reserve": 12340000.0,
+      "n_simulations": 5000
     },
     {
       "scenario": "Catastrophic event",
       "mortality_shock": 2.5,
-      "mean_claims": 14721625.0,
-      "var_995": 17895500.0,
-      "tvar_995": 18517500.0,
-      "mean_deaths": 301.3,
-      "required_reserve": 17895500.0
+      "mean_claims": 14714297.0,
+      "var_995": 17955100.0,
+      "tvar_995": 18356800.0,
+      "mean_deaths": 300.7,
+      "required_reserve": 17955100.0,
+      "n_simulations": 5000
     }
   ]
 }

@@ -113,7 +113,11 @@ def run(data_path: str | None = None, n: int = 10_000) -> None:
 
     # --- 6. Stress scenarios ---
     print("\n[6/6] Running scenario analysis...")
-    scenarios = scenario_analysis(policyholders, life_table, n_simulations=2_000, horizon_years=5)
+    # Same simulation count as the headline run above, so the 1.0x row
+    # reproduces the baseline VaR rather than reporting a second, slightly
+    # different one that a reader has to reconcile.
+    scenarios = scenario_analysis(policyholders, life_table, n_simulations=5_000,
+                                  horizon_years=5, baseline=mc_results)
     for s in scenarios:
         print(f"  {s['scenario']}: mean claims ${s['mean_claims']:,.0f}, VaR ${s['var_995']:,.0f}")
 

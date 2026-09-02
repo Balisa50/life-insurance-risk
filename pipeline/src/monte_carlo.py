@@ -170,10 +170,17 @@ def scenario_analysis(
     life_table: pd.DataFrame,
     n_simulations: int = 2_000,
     horizon_years: int = 5,
+    baseline: dict | None = None,
 ) -> list[dict]:
     """
     Run Monte Carlo under different stress scenarios.
     Applies mortality shock multipliers to the base mortality.
+
+    `baseline` is the already-computed unshocked run. When supplied it is
+    reused for the 1.0x row instead of re-simulating. Two independent samples
+    of the same distribution differ by sampling noise, and publishing two
+    slightly different baseline VaRs invites a reader to ask which one is
+    the answer. There is only one baseline, so it is computed once.
     """
     scenarios = [
         {"name": "Baseline", "mortality_shock": 1.0},
@@ -184,18 +191,23 @@ def scenario_analysis(
 
     results = []
     for scenario in scenarios:
-        # Apply mortality shock to life table
-        shocked_lt = life_table.copy()
-        shocked_lt["hazard_rate"] = shocked_lt["hazard_rate"] * scenario["mortality_shock"]
-        shocked_lt["qx"] = 1 - np.exp(-shocked_lt["hazard_rate"])
-        shocked_lt["qx"] = shocked_lt["qx"].clip(0, 1)
+        if scenario["mortality_shock"] == 1.0 and baseline is not None:
+            mc = baseline
+            sims_used = baseline.get("n_simulations", n_simulations)
+        else:
+            # Apply mortality shock to life table
+            shocked_lt = life_table.copy()
+            shocked_lt["hazard_rate"] = shocked_lt["hazard_rate"] * scenario["mortality_shock"]
+            shocked_lt["qx"] = 1 - np.exp(-shocked_lt["hazard_rate"])
+            shocked_lt["qx"] = shocked_lt["qx"].clip(0, 1)
 
-        mc = simulate_claims(
-            policyholders,
-            shocked_lt,
-            n_simulations=n_simulations,
-            horizon_years=horizon_years,
-        )
+            mc = simulate_claims(
+                policyholders,
+                shocked_lt,
+                n_simulations=n_simulations,
+                horizon_years=horizon_years,
+            )
+            sims_used = n_simulations
 
         results.append({
             "scenario": scenario["name"],
@@ -205,6 +217,10 @@ def scenario_analysis(
             "tvar_995": mc["tvar_995"],
             "mean_deaths": mc["mean_deaths"],
             "required_reserve": mc["required_reserve"],
+            # Carried so the baseline row can be compared with the headline
+            # run rather than quietly differing from it at a different
+            # simulation count.
+            "n_simulations": sims_used,
         })
 
     return results
