@@ -76,9 +76,13 @@ the annuity-certain. That last one is a regression guard on the pricing bug
 described above.
 
 CI runs the tests, runs the full pipeline, and fails if a fresh seeded run does
-not reproduce `public/data/pipeline_results.json` byte for byte apart from its
-timestamp. The dashboard and the model cannot drift apart without the build
-going red.
+not reproduce `public/data/pipeline_results.json`. The comparison is a 0.1%
+relative tolerance rather than exact equality, and that is deliberate: the Cox
+fit goes through an iterative optimiser and lifelines, scikit-learn and NumPy
+all sit on whatever BLAS the platform ships, so the last digits differ between
+Windows and Linux. Structure is still compared exactly. Retuning an assumption
+moves figures by percent, so the check still catches the thing it exists for,
+which is the dashboard and the model drifting apart silently.
 
 ## Running on a real book
 
