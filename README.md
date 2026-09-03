@@ -1,5 +1,8 @@
 # Life Insurance Risk Model
 
+[![CI](https://github.com/Balisa50/life-insurance-risk/actions/workflows/ci.yml/badge.svg)](https://github.com/Balisa50/life-insurance-risk/actions/workflows/ci.yml)
+[![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
+
 Actuarial risk modelling for Sub-Saharan Africa. Built as part of learning actuarial science - wanted to implement proper mortality models from scratch rather than use a black-box package.
 
 All data is synthetic. This demonstrates the method, it does not measure real mortality experience.
@@ -52,6 +55,30 @@ npm run dev
 ```
 
 The synthetic run is seeded with `default_rng(42)` and reproduces exactly.
+
+## Tests
+
+```bash
+pip install pytest
+cd pipeline
+pytest                      # 29 tests on the basis
+python check_reproducible.py   # a fresh run must match the committed results
+```
+
+The tests check identities rather than today's numbers. A test asserting the
+average premium is $306 would break every time an assumption is retuned and
+would tell you nothing; these assert that the life table balances (`dx = lx qx`
+and `lx[x+1] = lx[x] - dx[x]`), that adult hazard doubles on the 7.4-year
+Gompertz schedule the parameters imply, that two competing decrements can never
+remove more than everyone, that selection never makes a freshly underwritten
+life look worse than ultimate, and that the annuity factor stays strictly below
+the annuity-certain. That last one is a regression guard on the pricing bug
+described above.
+
+CI runs the tests, runs the full pipeline, and fails if a fresh seeded run does
+not reproduce `public/data/pipeline_results.json` byte for byte apart from its
+timestamp. The dashboard and the model cannot drift apart without the build
+going red.
 
 ## Running on a real book
 
